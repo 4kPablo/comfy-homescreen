@@ -1,6 +1,6 @@
 "use client"
 
-export default function AnalogClock({ time }) {
+export default function AnalogClock({ time, hideSeconds, className }) {
   const hours = time.getHours() % 12
   const minutes = time.getMinutes()
   const seconds = time.getSeconds()
@@ -14,8 +14,8 @@ export default function AnalogClock({ time }) {
   const outerRadius = size / 2 - 4
 
   return (
-    <div className="flex flex-col items-center">
-      <svg width={size} height={size} className="drop-shadow-sm">
+    <div className={`w-full aspect-square flex flex-col items-center justify-center p-2 relative ${className || ""}`}>
+      <svg viewBox={`0 0 ${size} ${size}`} className="w-full h-full drop-shadow-sm mx-auto">
         {/* Circulo exterior */}
         <circle
           cx={center}
@@ -100,16 +100,18 @@ export default function AnalogClock({ time }) {
         />
 
         {/* Manecilla de segundos */}
-        <line
-          x1={center}
-          y1={center}
-          x2={center + 88 * Math.cos((secondAngle - 90) * (Math.PI / 180))}
-          y2={center + 88 * Math.sin((secondAngle - 90) * (Math.PI / 180))}
-          stroke="var(--destructive)"
-          strokeWidth="2"
-          strokeLinecap="round"
-          className="transition-colors duration-500"
-        />
+        {!hideSeconds && (
+            <line
+              x1={center}
+              y1={center}
+              x2={center + 88 * Math.cos((secondAngle - 90) * (Math.PI / 180))}
+              y2={center + 88 * Math.sin((secondAngle - 90) * (Math.PI / 180))}
+              stroke="var(--destructive)"
+              strokeWidth="2"
+              strokeLinecap="round"
+              className="transition-colors duration-500"
+            />
+        )}
 
         {/* Centro */}
         <circle

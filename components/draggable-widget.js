@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { Card } from "@/components/ui/card"
-import { GripVertical } from "lucide-react"
+import { GripVertical, X } from "lucide-react"
 
 export default function DraggableWidget({
   id,
@@ -12,6 +12,7 @@ export default function DraggableWidget({
   onDragStart,
   onDragEnd,
   onDrop,
+  onRemove,
   isDragging,
   isDraggable,
   animationDelay
@@ -72,12 +73,23 @@ export default function DraggableWidget({
       style={{ animationDelay: `${animationDelay}ms` }}
     >
       {isDraggable && (
-        <div
-          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-grab active:cursor-grabbing p-1 rounded hover:bg-secondary/50 z-20"
-          title="Arrastrar para mover"
-        >
-          <GripVertical className="w-4 h-4 text-muted-foreground" />
-        </div>
+        <>
+          <div
+            className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-grab active:cursor-grabbing p-1 rounded hover:bg-secondary/50 z-20"
+            title="Arrastrar para mover"
+          >
+            <GripVertical className="w-4 h-4 text-muted-foreground" />
+          </div>
+          {onRemove && (
+            <button
+              onClick={() => onRemove(id)}
+              className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer p-1 rounded hover:bg-destructive/10 z-20"
+              title="Eliminar widget"
+            >
+              <X className="w-4 h-4 text-muted-foreground hover:text-destructive" />
+            </button>
+          )}
+        </>
       )}
       {children}
     </Card>

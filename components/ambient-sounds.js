@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useRef, useEffect, useCallback } from "react"
+import React, { useState, useRef, useEffect, useCallback, useImperativeHandle, forwardRef } from "react"
 import { Volume2, VolumeX, Book, Waves, CloudRain, Wind, TreePine } from "lucide-react"
 import { Slider } from "@/components/ui/slider"
 
@@ -37,7 +37,7 @@ const sounds = [
   },
 ]
 
-const AmbientSounds = () => {
+const AmbientSounds = forwardRef((props, ref) => {
   const [activeSound, setActiveSound] = useState(null)
   const [volume, setVolume] = useState(0.5)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -52,6 +52,39 @@ const AmbientSounds = () => {
       }
     }
   }, [])
+
+  useImperativeHandle(ref, () => ({
+    autoPlay: () => {
+        if (!isPlaying && activeSound) {
+            const sound = sounds.find(s => s.id === activeSound)
+            if (sound) {
+               const audio = new Audio(sound.url)
+               audio.loop = true
+               audio.volume = volume
+               audio.play().catch(e => console.error("Error playing audio:", e))
+               audioRef.current = audio
+               setIsPlaying(true)
+            }
+        } else if (!isPlaying && !activeSound) {
+            // default to rain if no sound was selected
+            const sound = sounds[1]
+            const audio = new Audio(sound.url)
+            audio.loop = true
+            audio.volume = volume
+            audio.play().catch(e => console.error("Error playing audio:", e))
+            audioRef.current = audio
+            setActiveSound(sound.id)
+            setIsPlaying(true)
+        }
+    },
+    autoPause: () => {
+        if (isPlaying && audioRef.current) {
+           audioRef.current.pause()
+           audioRef.current = null
+           setIsPlaying(false)
+        }
+    }
+  }), [isPlaying, activeSound, volume])
 
   const playSound = useCallback((sound) => {
     if (activeSound === sound.id) {
@@ -139,6 +172,7 @@ const AmbientSounds = () => {
       </div>
     </div>
   )
-}
+})
 
+AmbientSounds.displayName = "AmbientSounds"
 export default React.memo(AmbientSounds)
