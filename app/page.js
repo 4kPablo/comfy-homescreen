@@ -15,6 +15,8 @@ import PomodoroTimer from "@/components/pomodoro-timer"
 import AmbientSounds from "@/components/ambient-sounds"
 import HourlyChime from "@/components/hourly-chime"
 import DraggableWidget from "@/components/draggable-widget"
+import QuickLinks from "@/components/quick-links"
+import TaskList from "@/components/task-list"
 import { getWidgetLayout, saveWidgetLayout, moveWidget } from "@/lib/widget-store"
 import { getSettings, saveSettings } from "@/lib/settings-store"
 import { Settings2, Check, Palette, X, Image as ImageIcon, ArrowLeft, Focus, Maximize, Minimize, Plus, Clock, Monitor, EyeOff, LayoutTemplate, Download, Upload, Bell, Play } from "lucide-react"
@@ -25,15 +27,44 @@ import { Toaster } from "@/components/ui/sonner"
 import { toast } from "sonner"
 import { playChimeSound, playAlarmSound } from "@/components/hourly-chime"
 import TimePicker from "@/components/shadcn-studio/date-picker/date-picker-09"
-
-const AutoFitColumn = ({ children, isCustomizationMode, onDrop, position }) => {
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragOverlay
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { useDroppable } from '@dnd-kit/core';
+const AutoFitColumn = ({ id, items, children, isCustomizationMode, position }) => {
   const containerRef = useRef(null)
   const contentRef = useRef(null)
   const [scale, setScale] = useState(1)
 
+  const { setNodeRef } = useDroppable({ id })
+
+  const setRefs = useCallback(
+    (node) => {
+      containerRef.current = node;
+      setNodeRef(node);
+    },
+    [setNodeRef]
+  );
+
   useEffect(() => {
     if (!containerRef.current || !contentRef.current) return
     const checkScale = () => {
+      if (isCustomizationMode) {
+        setScale(1)
+        return
+      }
       const containerHeight = containerRef.current.clientHeight
       const contentHeight = contentRef.current.scrollHeight
       if (contentHeight > containerHeight && contentHeight > 0) {
@@ -48,22 +79,22 @@ const AutoFitColumn = ({ children, isCustomizationMode, onDrop, position }) => {
     resizeObserver.observe(contentRef.current)
     checkScale()
     return () => resizeObserver.disconnect()
-  }, [children])
+  }, [children, isCustomizationMode])
 
   return (
     <div
-      ref={containerRef}
+      ref={setRefs}
       className={`flex-shrink-0 h-[80vh] flex flex-col justify-center transition-all duration-700 ${isCustomizationMode ? "border-2 border-dashed border-primary/20 rounded-xl p-2 bg-primary/5" : ""}`}
-      style={{ width: scale < 1 ? `calc(18rem * ${scale})` : '18rem' }}
-      onDragOver={(e) => e.preventDefault()}
-      onDrop={onDrop}
+      style={{ width: '19rem' }}
     >
       <div
         ref={contentRef}
-        className={`w-72 space-y-4 flex flex-col transition-transform duration-300 ${position === 'left' ? 'origin-left' : 'origin-right'}`}
+        className={`w-full space-y-4 flex flex-col transition-transform duration-300 ${position === 'left' ? 'origin-left' : 'origin-right'}`}
         style={{ transform: scale < 1 ? `scale(${scale})` : 'none' }}
       >
-        {children}
+        <SortableContext items={items} strategy={verticalListSortingStrategy}>
+          {children}
+        </SortableContext>
       </div>
     </div>
   )
@@ -89,7 +120,18 @@ const widgetComponents = {
   "pomodoro": { component: PomodoroTimer, props: (state) => ({ onPomodoroComplete: state.handlePomodoroComplete, onFocusToggle: state.handleFocusToggle, onPomodoroActive: state.handlePomodoroActive, isFocusMode: state.isFocusMode }) },
   "tech-news": { component: TechNews, props: () => EMPTY_PROPS },
   "progress-bars": { component: ProgressBars, props: (state) => ({ currentTime: state.currentTime }) },
-  "youtube": { component: YoutubeWidget, props: (state) => ({ videoId: state.videoId, setVideoId: state.setVideoId, isVideoBackground: state.isVideoBackground, setIsVideoBackground: state.setIsVideoBackground, isFullscreenViewport: state.isFullscreenViewport, setIsFullscreenViewport: state.setIsFullscreenViewport }) },
+  "youtube": { component: YoutubeWidget, props: (state) => ({ 
+    videoId: state.videoId, 
+    setVideoId: state.setVideoId, 
+    isVideoBackground: state.isVideoBackground, 
+    setIsVideoBackground: state.setIsVideoBackground, 
+    isFullscreenViewport: state.isFullscreenViewport, 
+    setIsFullscreenViewport: state.setIsFullscreenViewport,
+    youtubePlaylistExpanded: state.youtubePlaylistExpanded,
+    setYoutubePlaylistExpanded: state.setYoutubePlaylistExpanded
+  }) },
+  "quick-links": { component: QuickLinks, props: () => EMPTY_PROPS },
+  "task-list": { component: TaskList, props: () => EMPTY_PROPS },
 }
 
 // Configuración de Temas por Fondo
@@ -154,6 +196,8 @@ export default function HomePage() {
   const [mounted, setMounted] = useState(false)
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
   const [isCustomizationMode, setIsCustomizationMode] = useState(false)
+  const [showUI, setShowUI] = useState(false)
+  const [hideSidebars, setHideSidebars] = useState(false)
   const [backgroundType, setBackgroundType] = useState('particles')
   const [customBgColor, setCustomBgColor] = useState('#1a1a1a')
   const [centralClockType, setCentralClockType] = useState('digital')
@@ -177,8 +221,97 @@ export default function HomePage() {
   const [isVideoBackground, setIsVideoBackground] = useState(false)
   const [isFullscreenViewport, setIsFullscreenViewport] = useState(false)
   const [youtubeFullscreen, setYoutubeFullscreen] = useState(false)
+  const [youtubePlaylistExpanded, setYoutubePlaylistExpanded] = useState(false)
 
   const ambientRef = useRef(null)
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragStart = (event) => {
+    setDraggingWidget(event.active.id);
+  };
+
+  const handleDragOver = (event) => {
+    const { active, over } = event;
+    if (!over) return;
+
+    const activeId = active.id;
+    const overId = over.id;
+
+    if (activeId === overId) return;
+
+    const activeContainer = layout.left.includes(activeId) ? "left" : "right";
+    const overContainer = layout.left.includes(overId) ? "left" : layout.right.includes(overId) ? "right" : overId;
+
+    if (!activeContainer || !overContainer || activeContainer === overContainer) {
+      return;
+    }
+
+    setLayout((prev) => {
+      const activeItems = prev[activeContainer];
+      const overItems = prev[overContainer];
+      const activeIndex = activeItems.indexOf(activeId);
+      const overIndex = overItems.indexOf(overId);
+
+      let newIndex;
+      if (overId in prev) { // dropped on empty column
+        newIndex = overItems.length + 1;
+      } else {
+        const isBelowOverItem = over && active.rect.current.translated && active.rect.current.translated.top > over.rect.top + over.rect.height;
+        const modifier = isBelowOverItem ? 1 : 0;
+        newIndex = overIndex >= 0 ? overIndex + modifier : overItems.length + 1;
+      }
+
+      return {
+        ...prev,
+        [activeContainer]: activeItems.filter((item) => item !== activeId),
+        [overContainer]: [
+          ...overItems.slice(0, newIndex),
+          activeItems[activeIndex],
+          ...overItems.slice(newIndex, overItems.length),
+        ],
+      };
+    });
+  };
+
+  const handleDragEnd = (event) => {
+    const { active, over } = event;
+    setDraggingWidget(null);
+    if (!over) return;
+
+    const activeId = active.id;
+    const overId = over.id;
+
+    const activeContainer = layout.left.includes(activeId) ? "left" : "right";
+    const overContainer = layout.left.includes(overId) ? "left" : layout.right.includes(overId) ? "right" : overId;
+
+    if (activeContainer && overContainer && activeContainer === overContainer) {
+      const activeIndex = layout[activeContainer].indexOf(activeId);
+      const overIndex = layout[overContainer].indexOf(overId);
+
+      if (activeIndex !== overIndex) {
+        const newLayout = {
+          ...layout,
+          [overContainer]: arrayMove(layout[overContainer], activeIndex, overIndex),
+        };
+        setLayout(newLayout);
+        saveWidgetLayout(newLayout);
+      } else {
+        saveWidgetLayout(layout);
+      }
+    } else {
+       saveWidgetLayout(layout);
+    }
+  };
 
   const setVideoId = useCallback((id) => {
     setVideoIdState(id)
@@ -311,15 +444,6 @@ export default function HomePage() {
     reader.readAsText(file)
   }
 
-  const handleDrop = useCallback((targetColumn, targetIndex) => (draggedWidgetId) => {
-    const sourceColumn = layout.left.includes(draggedWidgetId) ? "left" : "right"
-
-    // Allow reordering in same column or moving between columns
-    const newLayout = moveWidget(draggedWidgetId, sourceColumn, targetColumn, layout, targetIndex)
-    setLayout(newLayout)
-    saveWidgetLayout(newLayout)
-  }, [layout])
-
   const handleRemoveWidget = useCallback((widgetId) => {
     const newLayout = {
       left: layout.left.filter(id => id !== widgetId),
@@ -417,26 +541,27 @@ export default function HomePage() {
     alarmSoundType,
     timerSoundType,
     isFullscreenViewport,
-    setIsFullscreenViewport
+    setIsFullscreenViewport,
+    youtubePlaylistExpanded,
+    setYoutubePlaylistExpanded
   }
 
-  const renderWidget = (widgetId, index, column) => {
+  const renderWidget = (widgetId, index, column, isOverlay = false) => {
     const widgetConfig = widgetComponents[widgetId]
     if (!widgetConfig) return null
+
+    const isHidden = !isOverlay && youtubePlaylistExpanded && widgetId !== 'youtube' && layout[column].includes('youtube');
+    const finalCardClass = `${cardClass} ${isHidden ? "hidden" : ""}`;
 
     if (widgetId === 'pomodoro') {
       return (
         <DraggableWidget
           key={widgetId}
           id={widgetId}
-          index={index}
-          cardClass={cardClass}
-          onDragStart={setDraggingWidget}
-          onDragEnd={() => setDraggingWidget(null)}
-          onDrop={handleDrop(column, index)}
-          isDragging={draggingWidget === widgetId}
+          cardClass={finalCardClass}
           isDraggable={isCustomizationMode}
           animationDelay={100 + index * 50}
+          isOverlay={isOverlay}
         >
           <FocusLauncherWidget onFocusToggle={state.handleFocusToggle} />
         </DraggableWidget>
@@ -450,15 +575,11 @@ export default function HomePage() {
       <DraggableWidget
         key={widgetId}
         id={widgetId}
-        index={index}
-        cardClass={cardClass}
-        onDragStart={setDraggingWidget}
-        onDragEnd={() => setDraggingWidget(null)}
-        onDrop={handleDrop(column, index)}
+        cardClass={finalCardClass}
         onRemove={isCustomizationMode ? handleRemoveWidget : undefined}
-        isDragging={draggingWidget === widgetId}
         isDraggable={isCustomizationMode}
         animationDelay={100 + index * 50}
+        isOverlay={isOverlay}
       >
         <Component {...props} />
       </DraggableWidget>
@@ -495,20 +616,31 @@ export default function HomePage() {
     <div
       className={`h-screen overflow-hidden w-full flex flex-col items-center justify-center relative transition-colors duration-1000 ${isNightMode ? "bg-black" : "animated-bg"}`}
       style={backgroundType === 'solid' ? { backgroundColor: customBgColor } : backgroundType === 'particles' ? { backgroundColor: particleBgColor } : {}}
+      onMouseMove={() => setShowUI(true)}
+      onMouseLeave={() => setShowUI(false)}
     >
       {renderBackground()}
       <Toaster />
       <HourlyChime currentTime={currentTime} enabled={chimeEnabled} silentFrom={chimeSilentFrom} silentTo={chimeSilentTo} soundType={chimeSoundType} onChime={handleHourlyChime} />
 
-      {/* Button to toggle Drawer */}
+      {/* Buttons to toggle Drawer and Sidebars */}
       {!isCustomizationMode && !isFullscreenViewport && (
-        <button
-          onClick={() => setIsDrawerOpen(true)}
-          className="absolute top-6 right-6 px-4 py-2 bg-card/80 backdrop-blur-md border border-border rounded-full shadow-lg hover:scale-105 transition-transform z-50 group flex items-center gap-2"
-          title="Ajustes y Personalización"
-        >
-          <Settings2 className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
-        </button>
+        <div className={`absolute top-6 right-6 flex items-center gap-4 transition-all duration-500 z-50 ${showUI ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-4 pointer-events-none"}`}>
+          <button
+            onClick={() => setHideSidebars(!hideSidebars)}
+            className="px-4 py-2 bg-card/80 backdrop-blur-md border border-border rounded-full shadow-lg hover:scale-105 transition-transform group flex items-center justify-center"
+            title={hideSidebars ? "Mostrar paneles laterales" : "Ocultar paneles laterales"}
+          >
+            {hideSidebars ? <LayoutTemplate className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" /> : <EyeOff className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />}
+          </button>
+          <button
+            onClick={() => setIsDrawerOpen(true)}
+            className="px-4 py-2 bg-card/80 backdrop-blur-md border border-border rounded-full shadow-lg hover:scale-105 transition-transform group flex items-center justify-center"
+            title="Ajustes y Personalización"
+          >
+            <Settings2 className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
+          </button>
+        </div>
       )}
 
       {/* Button to finish Customization Mode */}
@@ -831,21 +963,27 @@ export default function HomePage() {
         {/* === MODO NORMAL === */}
         <div className={`absolute inset-0 w-full h-full flex flex-col items-center justify-center transition-all duration-1000 ease-[cubic-bezier(0.22,1,0.36,1)] ${isFocusMode ? "translate-y-full opacity-0 pointer-events-none" : "translate-y-0 opacity-100"}`}>
           {/* Main Content Area */}
-          <div className={`relative z-10 w-full h-full flex items-center justify-center pointer-events-none p-8`}>
-            <div className={`w-full flex gap-4 h-full pt-24 pb-8 transition-all duration-700 pointer-events-auto ${videoId && !isVideoBackground ? "max-w-[1800px] px-4" : "max-w-[1400px] px-8"}`}>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDragEnd={handleDragEnd}
+          >
+            <div className={`relative z-10 w-full h-full flex items-center justify-center pointer-events-none p-8`}>
+              <div className={`w-full flex gap-4 h-full pt-24 pb-8 transition-all duration-700 pointer-events-auto ${videoId && !isVideoBackground ? "max-w-[1800px] px-4" : "max-w-[1400px] px-8"}`}>
 
               {/* Columna izquierda */}
-              <AutoFitColumn
-                isCustomizationMode={isCustomizationMode}
-                position="left"
-                onDrop={(e) => {
-                  e.preventDefault()
-                  const widgetId = e.dataTransfer.getData("widgetId")
-                  if (widgetId) handleDrop("left", null)(widgetId)
-                }}
-              >
-                {layout.left.map((widgetId, index) => renderWidget(widgetId, index, "left"))}
-              </AutoFitColumn>
+              <div className={`transition-all duration-700 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${hideSidebars ? "-translate-x-[150%] opacity-0 pointer-events-none" : "translate-x-0 opacity-100"}`}>
+                <AutoFitColumn
+                  id="left"
+                  items={layout.left}
+                  isCustomizationMode={isCustomizationMode}
+                  position="left"
+                >
+                  {layout.left.map((widgetId, index) => renderWidget(widgetId, index, "left"))}
+                </AutoFitColumn>
+              </div>
 
               {/* Centro - Reloj principal / Youtube */}
               <div className="flex-1 flex flex-col items-center justify-center">
@@ -910,19 +1048,28 @@ export default function HomePage() {
               </div>
 
               {/* Columna derecha */}
-              <AutoFitColumn
-                isCustomizationMode={isCustomizationMode}
-                position="right"
-                onDrop={(e) => {
-                  e.preventDefault()
-                  const widgetId = e.dataTransfer.getData("widgetId")
-                  if (widgetId) handleDrop("right", null)(widgetId)
-                }}
-              >
-                {layout.right.map((widgetId, index) => renderWidget(widgetId, index, "right"))}
-              </AutoFitColumn>
+              <div className={`transition-all duration-700 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${hideSidebars ? "translate-x-[150%] opacity-0 pointer-events-none" : "translate-x-0 opacity-100"} ${isCustomizationMode ? "min-w-[280px]" : ""}`}>
+                <AutoFitColumn
+                  id="right"
+                  items={layout.right}
+                  isCustomizationMode={isCustomizationMode}
+                  position="right"
+                >
+                  {layout.right.map((widgetId, index) => renderWidget(widgetId, index, "right"))}
+                </AutoFitColumn>
+              </div>
+
             </div>
           </div>
+            
+          <DragOverlay dropAnimation={{
+              duration: 250,
+              easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)',
+          }}>
+            {draggingWidget ? renderWidget(draggingWidget, 0, layout.left.includes(draggingWidget) ? 'left' : 'right', true) : null}
+          </DragOverlay>
+            
+          </DndContext>
         </div>
 
         {/* === MODO FOCUS === */}

@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import {
   BookOpen, Dumbbell, Pencil, Play, Pause, RotateCcw, Plus, Trash2,
-  Check, X, Edit2, Bike, Coffee, Code, Music, Heart, Star, Zap, Moon
+  Check, X, Edit2, Bike, Coffee, Code, Music, Heart, Star, Zap, Moon, SkipForward
 } from "lucide-react"
 import { savePomodoroLog } from "@/lib/pomodoro-store"
 
@@ -408,6 +408,15 @@ export default function PomodoroTimer({ onPomodoroComplete, onPomodoroActive, is
           <Button variant="outline" size="icon" className="h-12 w-12 rounded-full shadow-sm hover:scale-110 transition-transform bg-background text-muted-foreground" onClick={() => resetTimer()}>
             <RotateCcw className="w-5 h-5" />
           </Button>
+          {isBreak && mode === "pomodoro" && (
+            <Button variant="outline" size="icon" className="h-12 w-12 rounded-full shadow-sm hover:scale-110 transition-transform bg-background text-muted-foreground" onClick={() => {
+              setIsBreak(false)
+              setPomodoroTimeLeft(WORK_TIME)
+              setIsActive(true)
+            }} title="Saltear descanso">
+              <SkipForward className="w-5 h-5" />
+            </Button>
+          )}
         </div>
       </div>
     </div>

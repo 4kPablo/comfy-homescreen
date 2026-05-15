@@ -6,7 +6,7 @@ import {
   CloudLightning, CloudSnow, CloudFog, MapPin, Search, RefreshCw, ChevronRight, ChevronLeft
 } from "lucide-react"
 
-const API_KEY = "7e830ff11112110f77c5a4cb846c970d"
+const API_KEY = process.env.NEXT_PUBLIC_WEATHER_API_KEY
 
 const WeatherWidget = ({ showLocation = true, showStats = true }) => {
   const [weatherData, setWeatherData] = useState(null)
